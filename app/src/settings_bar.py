@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QLabel,
 )
+from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
 import serial.tools.list_ports
 
@@ -50,12 +51,16 @@ class SerialComboBox(QComboBox):
             
 class SettingsBar(QtWidgets.QWidget):
     
+    port_connection_request = pyqtSignal(str)
+    
     def __init__(
         self, 
         config=None
     ):
         super().__init__()
         self.config = config
+        
+        self.port_connected = False
         
         main_layout = QVBoxLayout()
         group_box = QGroupBox("Settings")
@@ -64,7 +69,7 @@ class SettingsBar(QtWidgets.QWidget):
         self.port_select_cb = SerialComboBox()
         port_select_lbl = QLabel("Port:")
         group_box_layout = QHBoxLayout()
-        self.port_select_btn = QtWidgets.QPushButton("Open")
+        self.port_connection_btn = QtWidgets.QPushButton("Open")
         
         group_box_layout.addWidget(port_select_lbl)
         port_select_lbl.setFixedWidth(30)
@@ -72,11 +77,48 @@ class SettingsBar(QtWidgets.QWidget):
         group_box_layout.addSpacing(0)
         self.port_select_cb.setEnabled(True)
         self.port_select_cb.setFixedWidth(100)
-        self.port_select_btn.setFixedWidth(50)
-        group_box_layout.addWidget(self.port_select_btn)
+        self.port_connection_btn.setFixedWidth(50)
+        group_box_layout.addWidget(self.port_connection_btn)
         
         group_box.setLayout(group_box_layout)
         main_layout.addWidget(group_box)
         self.setLayout(main_layout)
+        
+        self.port_connection_btn.clicked.connect(self.on_port_connection_btn)
+        
+    def on_port_connection_btn(self):
+        if self.port_connected:
+            self.port_connection_btn.setText("Closing...")
+            self.port_connection_btn.setEnabled(False)
+            self.port_connection_request.emit("Close")
+        else:
+            port_name = self.port_select_cb.currentText()
+            if port_name is not None:
+                self.port_select_cb.setEnabled(False)
+                self.port_connection_btn.setText("Opening...")
+                self.port_connection_btn.setEnabled(False)
+                self.port_connection_request.emit(port_name)
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    "No port selected",
+                )
+                
+    
+    @pyqtSlot(bool)
+    def on_port_connection_changed(self, connected):
+        self.port_connected = connected
+        if self.port_connected:
+            self.port_connection_btn.setText("Close")
+            self.port_connection_btn.setEnabled(True)
+        else:
+            self.port_connection_btn.setText("Open")
+            self.port_connection_btn.setEnabled(True)
+            
+    
+
+            
+        
         
         
