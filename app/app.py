@@ -1,12 +1,9 @@
 import sys
 from PyQt5.QtWidgets import (
     QApplication,
-    QMainWindow,
 )
 
-from app_info import __app_name__
-
-
+from app.src.mainwindow import MainWindow
 
 
 
