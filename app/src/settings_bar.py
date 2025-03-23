@@ -79,7 +79,7 @@ class SettingsBar(QtWidgets.QWidget):
         self.port_select_cb.setFixedWidth(100)
         self.port_connection_btn.setFixedWidth(50)
         group_box_layout.addWidget(self.port_connection_btn)
-        
+        group_box_layout.addStretch(1)
         group_box.setLayout(group_box_layout)
         main_layout.addWidget(group_box)
         self.setLayout(main_layout)
@@ -112,9 +112,12 @@ class SettingsBar(QtWidgets.QWidget):
         if self.port_connected:
             self.port_connection_btn.setText("Close")
             self.port_connection_btn.setEnabled(True)
+            self.port_connected = True
         else:
             self.port_connection_btn.setText("Open")
             self.port_connection_btn.setEnabled(True)
+            self.port_connected = False
+            self.port_select_cb.setEnabled(True)
             
     
 

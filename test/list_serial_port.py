@@ -9,3 +9,5 @@ import serial.tools.list_ports
 #     print(f"Device: {port.device}, Description: {port.description}")
 
 [print(f"Device: {port.device}, Description: {port.description}") for port in serial.tools.list_ports.comports() if "USB" in port.device]
+
+
