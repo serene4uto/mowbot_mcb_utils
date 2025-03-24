@@ -4,15 +4,21 @@ import serial
 from ctypes import c_ubyte
 from app.src.logger import logger
 
+from app.src import mcb_regs
 from app.src.mcb import (
     MCBDataReturnMode,
-    mcb_data_parser
+    mcb_run_data_parser,
+    mcb_set_data_parser, MCB_MSG_H1, MCB_MSG_H2, MCB_MSG_TX_CMD, MCB_MSG_RX_CMD,
+    MBBMC_MSG_SET_DATA_LEN
 )
+
+
         
 class SerialService(QObject):
     
     port_connection_changed = pyqtSignal(bool)
     rundata_received = pyqtSignal(dict)
+    setdata_received = pyqtSignal(dict)
     
     
     def __init__(
@@ -53,6 +59,7 @@ class SerialService(QObject):
                 buffer = bytearray()  # Buffer to accumulate data
                 frame_start_sequence = bytearray([0x5A, 0xA5])  # Define the start sequence
                 frame_active = False  # Flag to indicate if we're within a frame
+                self._send_cmd_to_set_return_mode(self.mcb_return_mode)
                 while self.running_:
                     
                     # Read one byte at a time
@@ -70,13 +77,17 @@ class SerialService(QObject):
                                 
                                 if self.mcb_return_mode == MCBDataReturnMode.RUN:
                                     payload = buffer[2:-2]
-                                    parsed = mcb_data_parser(payload, self.mcb_return_mode)
+                                    parsed = mcb_run_data_parser(payload)
                                     logger.info(f"Parsed data: {parsed}")
                                     if parsed:
                                         self.rundata_received.emit(parsed)
                                 
                                 if self.mcb_return_mode == MCBDataReturnMode.SET:
-                                    pass
+                                    payload = buffer[2:-2]
+                                    parsed = mcb_set_data_parser(payload)
+                                    logger.info(f"Parsed data: {parsed}")
+                                    if parsed:
+                                        self.setdata_received.emit(parsed)
 
                                 
                                 # Start new frame with the new start sequence
@@ -94,8 +105,6 @@ class SerialService(QObject):
             logger.error(f"Error: {str(e)}")
             self.stop()
             
-            
-    
     def start(self, port_name):
         self.serial_port = port_name
         if not self.thread.isRunning():
@@ -114,3 +123,41 @@ class SerialService(QObject):
             self.thread.wait()
         
         self.port_connection_changed.emit(False)
+    
+    def _send_cmd_to_config_reg16(self, reg, value):
+        txdata = [
+            MCB_MSG_H1, 
+            MCB_MSG_H2, 
+            0x06,
+            MCB_MSG_TX_CMD, 
+            (reg >> 8) & 0xFF,
+            reg & 0xFF,
+            0x01,
+            (value >> 8) & 0xFF,
+            value & 0xFF
+        ]
+        
+        self.serial.write(bytearray(txdata))
+        
+    def _send_cmd_to_set_return_mode(self, mode):
+        if mode == MCBDataReturnMode.RUN:
+            self._send_cmd_to_config_reg16(mcb_regs.MCB_DATA_MODE_REG, 0)
+        elif mode == MCBDataReturnMode.SET:
+            self._send_cmd_to_config_reg16(mcb_regs.MCB_DATA_MODE_REG, 1)
+            
+            
+    def cfg_return_mode(self, mode):
+        logger.info(f"Setting return mode to {mode}")
+        if mode == "RUN":
+            self.mcb_return_mode = MCBDataReturnMode.RUN
+            self._send_cmd_to_set_return_mode(MCBDataReturnMode.RUN)
+        elif mode == "SET":
+            self.mcb_return_mode = MCBDataReturnMode.SET
+            self._send_cmd_to_set_return_mode(MCBDataReturnMode.SET)
+            
+    @pyqtSlot(dict)
+    def on_reg16_new_config(self, cfg):
+        self._send_cmd_to_config_reg16(cfg["reg"], cfg["val"])
+    
+    
+        

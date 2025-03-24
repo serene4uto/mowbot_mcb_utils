@@ -37,7 +37,7 @@ class GeneralPanel(QWidget):
         self.gb = QGroupBox("General Panel")
         self.gb_layout = QHBoxLayout()
         
-        self.supply_vol_info = InfoItem("Supply Voltage (V)")
+        self.supply_vol_info = InfoItem("Supply Voltage (V):")
         
         self.init_ui()
     

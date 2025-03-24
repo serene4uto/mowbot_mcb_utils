@@ -2,10 +2,13 @@ import ctypes
 import enum
 from typing import Optional
 
-# Constants
-MCBRunDataMsgSize = 26
-STATUS_FIELD_SIZE = 2
+from app.src.logger import logger
 
+# Constants
+MCB_MSG_H1 = 0x5A
+MCB_MSG_H2 = 0xA5
+MCB_MSG_TX_CMD = 0x83
+MCB_MSG_RX_CMD = 0x82
 
 # -------------------- Data Structures --------------------
 
@@ -48,15 +51,60 @@ class MCBRunDataFields(ctypes.LittleEndianStructure):
         ('unknown2', ctypes.c_uint8),
     ]
 
+MBBMC_MSG_RUN_DATA_LEN = ctypes.sizeof(MCBRunDataFields)
+
 
 class MCBRunDataMsg(ctypes.Union):
     _fields_ = [
         ('fields', MCBRunDataFields),
-        ('raw', ctypes.c_uint8 * MCBRunDataMsgSize),
+        ('raw', ctypes.c_uint8 * MBBMC_MSG_RUN_DATA_LEN),
+    ]
+    _anonymous_ = ('fields',)
+    
+
+class MBBMCSetDataFields(ctypes.LittleEndianStructure):
+    _pack_ = 1
+    _fields_ = [
+        ('fix1', ctypes.c_uint8),
+        ('fix2', ctypes.c_uint8),
+        ('m1mode', ctypes.c_uint8 * 2),
+        ('m2mode', ctypes.c_uint8 * 2),
+        ('m1dir', ctypes.c_uint8 * 2),
+        ('m2dir', ctypes.c_uint8 * 2),
+        ('m1polepairs', ctypes.c_uint8 * 2),
+        ('m2polepairs', ctypes.c_uint8 * 2),
+        ('m1maxspeed', ctypes.c_uint8 * 2),
+        ('m2maxspeed', ctypes.c_uint8 * 2),
+        ('m1maxcurrent', ctypes.c_uint8 * 2),
+        ('m2maxcurrent', ctypes.c_uint8 * 2),
+        ('m1acdecelrate', ctypes.c_uint8 * 2),
+        ('m2acdecelrate', ctypes.c_uint8 * 2),
+        ('m1holdcurrent', ctypes.c_uint8 * 2),
+        ('m2holdcurrent', ctypes.c_uint8 * 2),
+        ('Serialbaudrate', ctypes.c_uint8 * 2),
+        ('CANbaudrate', ctypes.c_uint8 * 2),
+        ('enableport', ctypes.c_uint8 * 2),
+        ('encoder1linecount', ctypes.c_uint8 * 2),
+        ('encoder2linecount', ctypes.c_uint8 * 2),
+        ('m1voltrange', ctypes.c_uint8 * 2),
+        ('m2voltrange', ctypes.c_uint8 * 2),
+        ('pwmportconfig', ctypes.c_uint8 * 2),
+        ('reserved', ctypes.c_uint8 * 2),
+        ('reserved2', ctypes.c_uint8 * 2),
+        ('driverID', ctypes.c_uint8 * 2),
+    ]
+
+# Define the size constant (match with the C macro MBBMC_MSG_SET_DATA_LEN)
+MBBMC_MSG_SET_DATA_LEN = ctypes.sizeof(MBBMCSetDataFields)
+
+class MBBMCSetDataMsg(ctypes.Union):
+    _fields_ = [
+        ('fields', MBBMCSetDataFields),
+        ('raw', ctypes.c_uint8 * MBBMC_MSG_SET_DATA_LEN),
     ]
     _anonymous_ = ('fields',)
 
-
+        
 class MCBDataReturnMode(enum.Enum):
     RUN = 0
     SET = 1
@@ -64,7 +112,7 @@ class MCBDataReturnMode(enum.Enum):
 
 # -------------------- Helper Functions --------------------
 
-def parse_scaled_uint16(data: ctypes.Array, scale: float = 0.1) -> float:
+def parse_scaled_float16(data: ctypes.Array, scale: float = 0.1) -> float:
     return round(int.from_bytes(data, byteorder="big") * scale, 2)
 
 
@@ -73,35 +121,63 @@ def parse_int32(data: ctypes.Array) -> int:
 
 
 def mcb_run_data_status_parser(data: ctypes.Array) -> dict:
-    status_bytes = int.from_bytes(data, byteorder="big").to_bytes(STATUS_FIELD_SIZE, byteorder="big")
+    status_bytes = int.from_bytes(data, byteorder="big").to_bytes(2, byteorder="big")
     parsed_status = MCBRunDataMStatusFields.from_buffer_copy(status_bytes)
     return parsed_status.as_dict()
 
 
 # -------------------- Main Parser --------------------
 
-def mcb_data_parser(data: bytes, mode: MCBDataReturnMode) -> Optional[dict]:
-    if mode == MCBDataReturnMode.RUN:
-        if len(data) != MCBRunDataMsgSize:
-            return None
+def mcb_run_data_parser(data: bytes) -> Optional[dict]:
+    if len(data) == MBBMC_MSG_RUN_DATA_LEN:
 
         run_data = MCBRunDataMsg.from_buffer_copy(data)
 
         return {
             "m1rpm": parse_int32(run_data.m1data),
             "m2rpm": parse_int32(run_data.m2data),
-            "m1current": parse_scaled_uint16(run_data.m1current),
-            "m2current": parse_scaled_uint16(run_data.m2current),
-            "m1temp": parse_scaled_uint16(run_data.m1temp),
-            "m2temp": parse_scaled_uint16(run_data.m2temp),
-            "supply_vol": parse_scaled_uint16(run_data.supply_vol),
+            "m1current": parse_scaled_float16(run_data.m1current),
+            "m2current": parse_scaled_float16(run_data.m2current),
+            "m1temp": parse_scaled_float16(run_data.m1temp),
+            "m2temp": parse_scaled_float16(run_data.m2temp),
+            "supply_vol": parse_scaled_float16(run_data.supply_vol),
             "m1status": mcb_run_data_status_parser(run_data.m1status),
             "m2status": mcb_run_data_status_parser(run_data.m2status),
         }
-
-    elif mode == MCBDataReturnMode.SET:
-        # Handle SET mode parsing if needed
-        return None
-
+        
     else:
-        raise ValueError(f"Unsupported mode: {mode}")
+        return None
+    
+
+def mcb_set_data_parser(data: bytes) -> Optional[dict]:
+    
+    if len(data) == MBBMC_MSG_SET_DATA_LEN:
+        
+        set_data = MBBMCSetDataMsg.from_buffer_copy(data)
+        
+        return {
+            "m1mode": parse_int32(set_data.m1mode),
+            "m2mode": parse_int32(set_data.m2mode),
+            "m1dir": parse_int32(set_data.m1dir),
+            "m2dir": parse_int32(set_data.m2dir),
+            "m1polepairs": parse_int32(set_data.m1polepairs),
+            "m2polepairs": parse_int32(set_data.m2polepairs),
+            "m1maxspeed": parse_int32(set_data.m1maxspeed),
+            "m2maxspeed": parse_int32(set_data.m2maxspeed),
+            "m1maxcurrent": parse_int32(set_data.m1maxcurrent),
+            "m2maxcurrent": parse_int32(set_data.m2maxcurrent),
+            "m1acdecelrate": parse_int32(set_data.m1acdecelrate),
+            "m2acdecelrate": parse_int32(set_data.m2acdecelrate),
+            "m1holdcurrent": parse_int32(set_data.m1holdcurrent),
+            "m2holdcurrent": parse_int32(set_data.m2holdcurrent),
+            "Serialbaudrate": parse_int32(set_data.Serialbaudrate),
+            "CANbaudrate": parse_int32(set_data.CANbaudrate),
+            "enableport": parse_int32(set_data.enableport),
+            "encoder1linecount": parse_int32(set_data.encoder1linecount),
+            "encoder2linecount": parse_int32(set_data.encoder2linecount),
+            "m1voltrange": parse_int32(set_data.m1voltrange),
+            "m2voltrange": parse_int32(set_data.m2voltrange),
+            "pwmportconfig": parse_int32(set_data.pwmportconfig),
+            "driverID": parse_int32(set_data.driverID),
+        }
+    
