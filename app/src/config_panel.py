@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QLineEdit,
 )
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
 from app.src.logger import logger 
 
@@ -19,7 +19,9 @@ class ConfigItem(QWidget):
         super().__init__()
         
         self.name_lbl = QLabel(name + ":")
-        self.name_lbl.setFixedWidth(80)
+        self.name_lbl.setFixedWidth(70)
+        self.value_lbl = QLabel("N/A")
+        self.value_lbl.setFixedWidth(50)
         self.value_le = QLineEdit("")
         self.value_le.setFixedWidth(50)
         self.cfg_btn = QPushButton("Cfg")
@@ -30,13 +32,14 @@ class ConfigItem(QWidget):
         layout = QHBoxLayout()
         layout.addWidget(self.name_lbl)
         layout.addSpacing(0)
+        layout.addWidget(self.value_lbl)
         layout.addWidget(self.value_le)
         layout.addWidget(self.cfg_btn)
         layout.addStretch(1)
         self.setLayout(layout)
     
-    def update_value(self, val):
-        self.value_le.setText(str(val))
+    def update_value_lbl(self, val):
+        self.value_lbl.setText(str(val))
         
     def get_value(self):
         return self.value_le.text()
@@ -126,6 +129,12 @@ class ConfigPanel(QWidget):
         main_layout.addLayout(utils_layout)
         main_layout.addStretch(1)
         self.setLayout(main_layout)
+        
+    @pyqtSlot(dict)
+    def on_setdata_received(self, data):
+        self.general_config.cfg_pwm_type.update_value_lbl(data["pwmportconfig"])
+        self.m1_config.cfg_motor_mode.update_value_lbl(data["m1mode"])
+        self.m2_config.cfg_motor_mode.update_value_lbl(data["m2mode"])
     
     def on_cfg_update_btn(self):
         self.cfg_update_request.emit("SET")

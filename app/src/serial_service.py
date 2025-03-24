@@ -2,6 +2,8 @@
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 import serial
 from ctypes import c_ubyte
+import threading
+
 from app.src.logger import logger
 
 from app.src import mcb_regs
@@ -20,6 +22,7 @@ class SerialService(QObject):
     rundata_received = pyqtSignal(dict)
     setdata_received = pyqtSignal(dict)
     
+    serial_lock = threading.Lock()
     
     def __init__(
         self
@@ -59,7 +62,7 @@ class SerialService(QObject):
                 buffer = bytearray()  # Buffer to accumulate data
                 frame_start_sequence = bytearray([0x5A, 0xA5])  # Define the start sequence
                 frame_active = False  # Flag to indicate if we're within a frame
-                self._send_cmd_to_set_return_mode(self.mcb_return_mode)
+                self.cfg_return_mode("RUN")
                 while self.running_:
                     
                     # Read one byte at a time
@@ -88,6 +91,7 @@ class SerialService(QObject):
                                     logger.info(f"Parsed data: {parsed}")
                                     if parsed:
                                         self.setdata_received.emit(parsed)
+                                        self.cfg_return_mode("RUN")
 
                                 
                                 # Start new frame with the new start sequence
@@ -136,8 +140,8 @@ class SerialService(QObject):
             (value >> 8) & 0xFF,
             value & 0xFF
         ]
-        
-        self.serial.write(bytearray(txdata))
+        with self.serial_lock:
+            self.serial.write(bytearray(txdata))
         
     def _send_cmd_to_set_return_mode(self, mode):
         if mode == MCBDataReturnMode.RUN:
@@ -154,10 +158,12 @@ class SerialService(QObject):
         elif mode == "SET":
             self.mcb_return_mode = MCBDataReturnMode.SET
             self._send_cmd_to_set_return_mode(MCBDataReturnMode.SET)
+        logger.info(f"Return mode set to {mode}")
             
-    @pyqtSlot(dict)
+    
     def on_reg16_new_config(self, cfg):
         self._send_cmd_to_config_reg16(cfg["reg"], cfg["val"])
+        # self.cfg_return_mode("SET") # Lock not working --> TODO: Fix this
     
     
         

@@ -35,7 +35,10 @@ class MainUI(QWidget):
         # Connect the port_connection_changed signal from the serial service to the settings bar
         self.serial_service.port_connection_changed.connect(self.settings_bar.on_port_connection_changed)
         self.serial_service.rundata_received.connect(self.monitor_panel.on_rundata_received)
+        self.serial_service.setdata_received.connect(self.config_panel.on_setdata_received)
         self.config_panel.cfg_update_request.connect(self.on_cfg_return_mode)
+        self.config_panel.cfg_request.connect(self.on_reg16_new_config)
+        
         
     def init_ui(self):
         main_layout = QVBoxLayout()
@@ -67,6 +70,10 @@ class MainUI(QWidget):
     def on_cfg_return_mode(self, mode):
         # logger.info(f"Setting return mode to {mode}")
         self.serial_service.cfg_return_mode(mode)
+        
+    @pyqtSlot(dict)
+    def on_reg16_new_config(self, cfg):
+        self.serial_service.on_reg16_new_config(cfg)
         
         
     
